@@ -230,7 +230,7 @@ uint8_t IsHealthy()
     long dmx_timeout = last_dmx_packet;
     xSemaphoreGive(sync_dmx);
     // check if elapsed time < defined timeout
-    if(millis() - dmx_timeout < HEALTHY_TIME)
+    if(esp_timer_get_time() - dmx_timeout < HEALTHY_TIME)
     {
         return 1;
     }
@@ -264,7 +264,7 @@ void uart_event_task(void *pvParameters)
                     current_rx_addr = 0;
                     xSemaphoreTake(sync_dmx, portMAX_DELAY);
                     // store received timestamp
-                    last_dmx_packet = millis();
+                    last_dmx_packet = esp_timer_get_time();
                     xSemaphoreGive(sync_dmx);
                     }
                 }

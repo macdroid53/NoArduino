@@ -1,16 +1,20 @@
 
-#include "_ansi.h"
+//#include "_ansi.h"
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
+#include <dmx.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
 #include "esp_attr.h"
 #include "soc/rtc.h"
 #include "driver/mcpwm.h"
+#include "driver/timer.h"
+
 //#include "soc/mcpwm_periph.h"
-#include <dmx.h>
+
+
 float percent_multiplier = 0.392156; // 100%/255
 
 //Define GPIO PWM pins and sync input pin
@@ -19,6 +23,10 @@ float percent_multiplier = 0.392156; // 100%/255
 #define GPIO_PWM1A_OUT 15   //Set GPIO 15 as PWM1A, Dimmer channel 3
 #define GPIO_PWM1B_OUT 14   //Set GPIO 14 as PWM1B, Dimmer channel 4
 #define GPIO_SYNC0_IN   4   //Set GPIO 04 as SYNC0 (change to GPIO 36, blew 4?)
+
+#define TIMER_DIVIDER   80               /*!< Hardware timer clock divider, 80 to get 1MHz clock to timer */
+#define TIMER_INTR_SEL TIMER_INTR_LEVEL  /*!< Timer level interrupt */
+#define TIMER_GROUP    TIMER_GROUP_0     /*!< Test on timer group 0 */
 
 int slot_A = 0;
 
@@ -66,14 +74,37 @@ static void bump_duty_cycles(void *arg)
     while (1) {
         slot_A = Read(1);
         printf("slot a : %d\n", slot_A);
+        mcpwm_set_duty(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_OPR_A, 100.0-(slot_A*percent_multiplier));
+
+        uint8_t health = IsHealthy();
+        printf("IsHealthy %d\n", health);
+        vTaskDelay(10);         //delay of 10ms
+
     }
 
 }
+
+static void tg0_timer0_init()
+{
+    int timer_group = TIMER_GROUP_0;
+    int timer_idx = TIMER_0;
+    timer_config_t config;
+    config.alarm_en = 1;
+    config.auto_reload = 1;
+    config.counter_dir = TIMER_COUNT_UP;
+    config.divider = TIMER_DIVIDER;
+    config.intr_type = TIMER_INTR_SEL;
+    config.counter_en = TIMER_PAUSE;
+    /*Configure timer*/
+    timer_init(timer_group, timer_idx, &config);
+}
+
 
 void app_main(void)
 {
     printf("Testing MCPWM...\n");
     xTaskCreate(mcpwm_config, "mcpwm_config", 4096, NULL, 5, NULL);
+    tg0_timer0_init();
     Initialize();
     xTaskCreate(bump_duty_cycles, "bump_duty_cycles", 4096, NULL, 5, NULL);
 }
