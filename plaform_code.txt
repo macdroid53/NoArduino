@@ -1,0 +1,2 @@
+/home/mac/.platformio/packages/framework-espidf/components/driver/uart.c
+/home/mac/.platformio/packages/framework-espidf/components/driver/include/driver/uart.h

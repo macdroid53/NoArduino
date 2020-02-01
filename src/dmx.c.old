@@ -1,5 +1,5 @@
-//#include <stdint.h>
-//#include <stdio.h>
+#include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 #include "esp_timer.h"
 
@@ -21,7 +21,6 @@
 #define DMX_IDLE                    0
 #define DMX_BREAK                   1
 #define DMX_DATA                    2
-#define DMX_BREAK_480               3
 
 
 QueueHandle_t dmx_rx_queue;
@@ -34,9 +33,8 @@ uint16_t current_rx_addr = 0;
 
 long last_dmx_packet = 0;
 
-uint8_t dmx_data[1024];
+uint8_t dmx_data[513];
 
-int curbuf = 0;
 
 void Initialize()
 {
@@ -90,8 +88,7 @@ uint8_t IsHealthy()
     long dmx_timeout = last_dmx_packet;
     xSemaphoreGive(sync_dmx);
     // check if elapsed time < defined timeout
-    //if(esp_timer_get_time() - dmx_timeout < HEALTHY_TIME)
-    if(xTaskGetTickCount() - dmx_timeout < HEALTHY_TIME)
+    if(esp_timer_get_time() - dmx_timeout < HEALTHY_TIME)
     {
         return 1;
     }
@@ -102,7 +99,6 @@ void uart_event_task(void *pvParameters)
 {
     uart_event_t event;
     uint8_t* dtmp = (uint8_t*) malloc(BUF_SIZE);
-    int read_bytes = 0;
     for(;;)
     {
         // wait for data in the dmx_queue
@@ -110,76 +106,49 @@ void uart_event_task(void *pvParameters)
         {
             //memset(dtmp, 0, (int)BUF_SIZE);
             bzero(dtmp, BUF_SIZE);
-            //printf("%d,%d\n",event.type, event.size);
             switch(event.type)
             {
                 case UART_DATA:
-                    //printf("%d\n", event.size);
-                    //uart_get_buffered_data_len(DMX_UART_NUM, (size_t*)&curbuf);
-                    //printf("UART_Break curbuf: %d\n", curbuf);
-
-                    // read the received data
-                    uart_read_bytes(DMX_UART_NUM, dtmp, event.size, portMAX_DELAY);
-                    // check if break detected
-                    if(dmx_state == DMX_BREAK)
+                // read the received data
+                uart_read_bytes(DMX_UART_NUM, dtmp, event.size, portMAX_DELAY);
+                // check if break detected
+                if(dmx_state == DMX_BREAK)
+                {
+                    // if not 0, then RDM or custom protocol
+                    if(dtmp[0] == 0)
                     {
-                        // if not 0, then RDM or custom protocol
-                        if(dtmp[0] == 0)
-                        {
-                            dmx_state = DMX_DATA;
-                            // reset dmx adress to 0
-                            current_rx_addr = 0;
-                            xSemaphoreTake(sync_dmx, portMAX_DELAY);
-                            // store received timestamp
-                            last_dmx_packet = esp_timer_get_time();
-                            xSemaphoreGive(sync_dmx);
-                        }
+                    dmx_state = DMX_DATA;
+                    // reset dmx adress to 0
+                    current_rx_addr = 0;
+                    xSemaphoreTake(sync_dmx, portMAX_DELAY);
+                    // store received timestamp
+                    last_dmx_packet = esp_timer_get_time();
+                    xSemaphoreGive(sync_dmx);
                     }
-                    // check if in data receive mode, or get remaining
-                    if((dmx_state == DMX_DATA) || (dmx_state == DMX_BREAK_480))
+                }
+                // check if in data receive mode
+                if(dmx_state == DMX_DATA)
+                {
+                    xSemaphoreTake(sync_dmx, portMAX_DELAY);
+                    // copy received bytes to dmx data array
+                    for(int i = 0; i < event.size; i++)
                     {
-                        xSemaphoreTake(sync_dmx, portMAX_DELAY);
-                        // copy received bytes to dmx data array
-                        for(int i = 0; i < event.size; i++)
-                        {
-                        dmx_data[current_rx_addr++] = dtmp[i];
-                        }
-                        xSemaphoreGive(sync_dmx);
-                        if(dmx_state == DMX_BREAK_480)
-                        {
-                            dmx_state = DMX_DATA;
-                        }
+                    dmx_data[current_rx_addr++] = dtmp[i];
                     }
-                    //printf("curren_rx_addr: %d\n", current_rx_addr);
-                    //printf("-----------\n");
+                    xSemaphoreGive(sync_dmx);
+                }
                 break;
                 case UART_BREAK:
-                    //if current address less than 512
-                    //assume more left in buffer
-                    //else flush and start from
-                    // clear queue und flush received bytes
-                    if(current_rx_addr <512 )
-                    {
-                        dmx_state = DMX_BREAK_480;
-                    }else
-                    {
-                        uart_flush_input(DMX_UART_NUM);
-                        xQueueReset(dmx_rx_queue);
-                        dmx_state = DMX_BREAK;
-                    }
-		        break;                
+                // break detected, clear queue und flush received bytes
+                // results in missing the last few bytes... needs fix
+                uart_flush_input(DMX_UART_NUM);
+                xQueueReset(dmx_rx_queue);
+                dmx_state = DMX_BREAK;
+                break;
                 case UART_FRAME_ERR:
-                    printf("frame\n");
-                    break;
                 case UART_PARITY_ERR:
-                    printf("parity\n");
-                    break;
                 case UART_BUFFER_FULL:
-                    printf("buff\n");
-                    break;
                 case UART_FIFO_OVF:
-                    printf("fifo\n");
-                    break;
                 default:
                 // error recevied, going to idle mode
                 uart_flush_input(DMX_UART_NUM);

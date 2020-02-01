@@ -1,12 +1,12 @@
 #ifndef DMX_h
 #define DMX_h
-#include <stdint.h>
+/*#include <stdint.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
 #include "driver/uart.h"
-
+*/
 /*class DMX
 {
     public:
@@ -53,7 +53,7 @@ uint16_t current_rx_addr;                    // last received dmx channel
 
 long last_dmx_packet;                        // timestamp for the last received packet
 
-uint8_t dmx_data[513];                       // stores the received dmx data
+uint8_t dmx_data[1024];                       // stores the received dmx data
 
 void uart_event_task(void *pvParameters);    // Event task
 
